@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	ratelimit2 "github.com/juju/ratelimit"
 	ratelimit1 "go.uber.org/ratelimit" //漏桶
 )
 
@@ -33,16 +34,25 @@ func rateLimit1() func(ctx *gin.Context) {
 }
 
 // 基于令牌桶的限流中间件2
-func rateLimit2() func(ctx *gin.Context) {
+func rateLimit2(fillInterval time.Duration, capacity int64) func(ctx *gin.Context) {
+	rl := ratelimit2.NewBucket(fillInterval, capacity)
 	return func(c *gin.Context) {
-		rateLimit2.NewBucketWithRate(2, 5)
+		//rl.Take()//这一次可以欠账
+		//rl.TakeAvailable此次没有取到令牌
+		if rl.TakeAvailable(1) == 1 {
+			c.Next()
+			return
+		} //有令牌才会取出令牌
+		c.String(http.StatusOK, "rate limit...")
+		c.Abort()
+
 	}
 }
 
 func main() {
 	r := gin.Default()
 	r.GET("/ping", rateLimit1(), pingHandler)
-	r.GET("/hei", rateLimit2(), heiHandler)
+	r.GET("/hei", rateLimit2(time.Second, 10), heiHandler)
 
 	r.Run()
 }
